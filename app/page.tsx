@@ -260,7 +260,7 @@ export default function StockPredictionApp() {
       // Build query parameters with stock data for more accurate predictions
       const params = new URLSearchParams({ symbol })
 
-      if (stockData) {
+      if (stockData && validateStockData(stockData)) {
         params.append("currentPrice", stockData.currentPrice.toString())
         params.append("dayChange", stockData.dayChange.toString())
         params.append("dayChangePercent", stockData.dayChangePercent.toString())
@@ -287,8 +287,10 @@ export default function StockPredictionApp() {
 
       if (validatePrediction(data)) {
         setPrediction(data)
+        setPredictionError(null)
       } else {
-        console.warn("Invalid prediction data received")
+        console.warn("Invalid prediction data received:", data)
+        setPredictionError("Invalid prediction data received")
         setPrediction(null)
       }
     } catch (error) {
@@ -307,13 +309,13 @@ export default function StockPredictionApp() {
     }
   }, [selectedStock, fetchStockData, generatePrediction])
 
-  // Auto-refresh functionality - only during market hours
+  // Auto-refresh functionality
   useEffect(() => {
-    if (autoRefresh && refreshInterval > 0 && stockData?.marketStatus?.isOpen) {
+    if (autoRefresh && refreshInterval > 0) {
       const interval = setInterval(refreshData, refreshInterval * 1000)
       return () => clearInterval(interval)
     }
-  }, [autoRefresh, refreshInterval, refreshData, stockData?.marketStatus?.isOpen])
+  }, [autoRefresh, refreshInterval, refreshData])
 
   // Initial data fetch
   useEffect(() => {
@@ -451,7 +453,6 @@ export default function StockPredictionApp() {
                         checked={autoRefresh}
                         onCheckedChange={setAutoRefresh}
                         className="data-[state=checked]:bg-green-500"
-                        disabled={!stockData?.marketStatus?.isOpen}
                       />
                       <span className="text-sm text-gray-300">Auto Refresh</span>
                     </div>

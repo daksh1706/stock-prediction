@@ -23,7 +23,9 @@ export async function GET(request: NextRequest) {
     // Check market status
     const marketStatus = marketHoursService.getMarketStatus(exchange)
 
-    // Only provide predictions during trading hours
+    // For development/demo purposes, allow predictions even when market is closed
+    // In production, you might want to uncomment the following block:
+    /*
     if (!marketStatus.isOpen) {
       const timeUntilOpen = marketHoursService.getTimeUntilOpen(exchange)
       return NextResponse.json(
@@ -38,8 +40,9 @@ export async function GET(request: NextRequest) {
           },
         },
         { status: 423 },
-      ) // 423 Locked - resource temporarily unavailable
+      )
     }
+    */
 
     // Use provided stock data or generate realistic defaults
     const stockData = {
@@ -60,16 +63,20 @@ export async function GET(request: NextRequest) {
     const prediction = predictionService.getPrediction(stockData)
 
     // Add market timing information to prediction
-    const timeUntilClose = marketHoursService.getTimeUntilClose(exchange)
+    const timeUntilClose = marketStatus.isOpen ? marketHoursService.getTimeUntilClose(exchange) : null
+    const timeUntilOpen = !marketStatus.isOpen ? marketHoursService.getTimeUntilOpen(exchange) : null
 
     return NextResponse.json({
       ...prediction,
       marketStatus: {
-        isOpen: true,
+        isOpen: marketStatus.isOpen,
         status: marketStatus.marketStatus,
         exchange,
         timeUntilClose,
-        message: `Prediction generated during active trading hours. Market closes in ${timeUntilClose}.`,
+        timeUntilOpen,
+        message: marketStatus.isOpen
+          ? `Prediction generated during active trading hours. Market closes in ${timeUntilClose}.`
+          : `Prediction generated for demo purposes. Market is ${marketStatus.marketStatus.toLowerCase()}. Opens in ${timeUntilOpen}.`,
       },
     })
   } catch (error) {
