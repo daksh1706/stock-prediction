@@ -222,7 +222,13 @@ export default function StockPredictionApp() {
   // Add prediction validation helper
   const validatePrediction = (pred: any) => {
     if (!pred) return false
-    return pred.signal && typeof pred.confidence === "number" && typeof pred.targetPrice === "number"
+    return (
+      pred.signal &&
+      typeof pred.confidence === "number" &&
+      !isNaN(pred.confidence) &&
+      typeof pred.targetPrice === "number" &&
+      !isNaN(pred.targetPrice)
+    )
   }
 
   const fetchStockData = useCallback(async (symbol: string) => {
@@ -260,7 +266,7 @@ export default function StockPredictionApp() {
       // Build query parameters with stock data for more accurate predictions
       const params = new URLSearchParams({ symbol })
 
-      if (stockData && validateStockData(stockData)) {
+      if (stockData) {
         params.append("currentPrice", stockData.currentPrice.toString())
         params.append("dayChange", stockData.dayChange.toString())
         params.append("dayChangePercent", stockData.dayChangePercent.toString())
@@ -287,10 +293,8 @@ export default function StockPredictionApp() {
 
       if (validatePrediction(data)) {
         setPrediction(data)
-        setPredictionError(null)
       } else {
-        console.warn("Invalid prediction data received:", data)
-        setPredictionError("Invalid prediction data received")
+        console.warn("Invalid prediction data received")
         setPrediction(null)
       }
     } catch (error) {
@@ -309,13 +313,13 @@ export default function StockPredictionApp() {
     }
   }, [selectedStock, fetchStockData, generatePrediction])
 
-  // Auto-refresh functionality
+  // Auto-refresh functionality - only during market hours
   useEffect(() => {
-    if (autoRefresh && refreshInterval > 0) {
+    if (autoRefresh && refreshInterval > 0 && stockData?.marketStatus?.isOpen) {
       const interval = setInterval(refreshData, refreshInterval * 1000)
       return () => clearInterval(interval)
     }
-  }, [autoRefresh, refreshInterval, refreshData])
+  }, [autoRefresh, refreshInterval, refreshData, stockData?.marketStatus?.isOpen])
 
   // Initial data fetch
   useEffect(() => {
@@ -453,6 +457,7 @@ export default function StockPredictionApp() {
                         checked={autoRefresh}
                         onCheckedChange={setAutoRefresh}
                         className="data-[state=checked]:bg-green-500"
+                        disabled={!stockData?.marketStatus?.isOpen}
                       />
                       <span className="text-sm text-gray-300">Auto Refresh</span>
                     </div>
@@ -625,12 +630,12 @@ export default function StockPredictionApp() {
                           <div className="flex items-center gap-2 mb-2">
                             {getSignalIcon(prediction.signal)}
                             <Badge className={getSignalColor(prediction.signal)}>
-                              {prediction.signal?.toUpperCase() || "UNKNOWN"}
+                              {prediction.signal?.toUpperCase() || "ANALYZING"}
                             </Badge>
                           </div>
                           <div className="text-sm text-gray-300">
-                            <div>Confidence: {prediction.confidence || 0}%</div>
-                            <div>Target: ₹{prediction.targetPrice?.toFixed(2) || "0.00"}</div>
+                            <div>Confidence: {Math.round(prediction.confidence || 0)}%</div>
+                            <div>Target: ₹{(prediction.targetPrice || 0).toFixed(2)}</div>
                           </div>
                         </div>
                       </div>

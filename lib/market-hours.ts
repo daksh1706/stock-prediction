@@ -1,121 +1,166 @@
-interface MarketStatus {
+interface MarketHours {
   isOpen: boolean
+  nextOpen: Date | null
+  nextClose: Date | null
+  timezone: string
   marketStatus: "OPEN" | "CLOSED" | "PRE_MARKET" | "AFTER_HOURS"
-  nextOpen?: Date
-  nextClose?: Date
+}
+
+interface ExchangeHours {
+  open: string
+  close: string
+  timezone: string
+  holidays: string[]
 }
 
 class MarketHoursService {
-  // Indian market holidays for 2024-2025
-  private holidays = [
-    "2024-01-26", // Republic Day
-    "2024-03-08", // Holi
-    "2024-03-29", // Good Friday
-    "2024-04-11", // Eid ul-Fitr
-    "2024-04-17", // Ram Navami
-    "2024-05-01", // Maharashtra Day
-    "2024-08-15", // Independence Day
-    "2024-08-19", // Raksha Bandhan
-    "2024-10-02", // Gandhi Jayanti
-    "2024-10-31", // Diwali Laxmi Puja
-    "2024-11-01", // Diwali Balipratipada
-    "2024-11-15", // Guru Nanak Jayanti
-    "2024-12-25", // Christmas
-    "2025-01-26", // Republic Day
-    "2025-03-14", // Holi
-    "2025-04-18", // Good Friday
-    "2025-05-01", // Maharashtra Day
-    "2025-08-15", // Independence Day
-    "2025-10-02", // Gandhi Jayanti
-    "2025-12-25", // Christmas
-  ]
+  private exchangeHours: Record<string, ExchangeHours> = {
+    NSE: {
+      open: "09:15",
+      close: "15:30",
+      timezone: "Asia/Kolkata",
+      holidays: [
+        "2024-01-26", // Republic Day
+        "2024-03-08", // Holi
+        "2024-03-29", // Good Friday
+        "2024-04-11", // Ram Navami
+        "2024-04-17", // Mahavir Jayanti
+        "2024-05-01", // Labour Day
+        "2024-08-15", // Independence Day
+        "2024-10-02", // Gandhi Jayanti
+        "2024-10-31", // Diwali Laxmi Puja
+        "2024-11-01", // Diwali Balipratipada
+        "2024-11-15", // Guru Nanak Jayanti
+        "2024-12-25", // Christmas
+      ],
+    },
+    BSE: {
+      open: "09:15",
+      close: "15:30",
+      timezone: "Asia/Kolkata",
+      holidays: [
+        "2024-01-26", // Republic Day
+        "2024-03-08", // Holi
+        "2024-03-29", // Good Friday
+        "2024-04-11", // Ram Navami
+        "2024-04-17", // Mahavir Jayanti
+        "2024-05-01", // Labour Day
+        "2024-08-15", // Independence Day
+        "2024-10-02", // Gandhi Jayanti
+        "2024-10-31", // Diwali Laxmi Puja
+        "2024-11-01", // Diwali Balipratipada
+        "2024-11-15", // Guru Nanak Jayanti
+        "2024-12-25", // Christmas
+      ],
+    },
+  }
 
-  private isHoliday(date: Date): boolean {
+  private getIndianTime(): Date {
+    return new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" }))
+  }
+
+  private isWeekend(date: Date): boolean {
+    const day = date.getDay()
+    return day === 0 || day === 6 // Sunday or Saturday
+  }
+
+  private isHoliday(date: Date, exchange: string): boolean {
     const dateStr = date.toISOString().split("T")[0]
-    return this.holidays.includes(dateStr)
+    const exchangeInfo = this.exchangeHours[exchange]
+    return exchangeInfo?.holidays.includes(dateStr) || false
   }
 
-  private getISTTime(): Date {
-    // Convert current time to IST (UTC+5:30)
-    const now = new Date()
-    const utc = now.getTime() + now.getTimezoneOffset() * 60000
-    const ist = new Date(utc + 5.5 * 3600000)
-    return ist
+  private parseTime(timeStr: string, date: Date): Date {
+    const [hours, minutes] = timeStr.split(":").map(Number)
+    const result = new Date(date)
+    result.setHours(hours, minutes, 0, 0)
+    return result
   }
 
-  public getMarketStatus(exchange: "NSE" | "BSE" = "NSE"): MarketStatus {
-    const now = this.getISTTime()
-    const dayOfWeek = now.getDay() // 0 = Sunday, 6 = Saturday
+  public getMarketStatus(exchange: string): MarketHours {
+    const now = this.getIndianTime()
+    const exchangeInfo = this.exchangeHours[exchange]
 
-    // Check if it's weekend
-    if (dayOfWeek === 0 || dayOfWeek === 6) {
+    if (!exchangeInfo) {
       return {
         isOpen: false,
+        nextOpen: null,
+        nextClose: null,
+        timezone: "Asia/Kolkata",
         marketStatus: "CLOSED",
       }
     }
 
-    // Check if it's a holiday
-    if (this.isHoliday(now)) {
+    // Check if it's weekend or holiday
+    if (this.isWeekend(now) || this.isHoliday(now, exchange)) {
+      const nextOpen = this.getNextTradingDay(now, exchange)
       return {
         isOpen: false,
+        nextOpen,
+        nextClose: null,
+        timezone: exchangeInfo.timezone,
         marketStatus: "CLOSED",
       }
     }
 
-    const hours = now.getHours()
-    const minutes = now.getMinutes()
-    const currentTime = hours * 60 + minutes
+    const openTime = this.parseTime(exchangeInfo.open, now)
+    const closeTime = this.parseTime(exchangeInfo.close, now)
 
-    // Market timings: 9:15 AM to 3:30 PM IST
-    const marketOpen = 9 * 60 + 15 // 9:15 AM
-    const marketClose = 15 * 60 + 30 // 3:30 PM
-    const preMarketStart = 9 * 60 // 9:00 AM
-    const afterHoursEnd = 16 * 60 // 4:00 PM
-
-    if (currentTime >= marketOpen && currentTime <= marketClose) {
-      return {
-        isOpen: true,
-        marketStatus: "OPEN",
-      }
-    } else if (currentTime >= preMarketStart && currentTime < marketOpen) {
+    // Pre-market (before 9:15 AM)
+    if (now < openTime) {
       return {
         isOpen: false,
+        nextOpen: openTime,
+        nextClose: closeTime,
+        timezone: exchangeInfo.timezone,
         marketStatus: "PRE_MARKET",
       }
-    } else if (currentTime > marketClose && currentTime <= afterHoursEnd) {
+    }
+
+    // Market hours (9:15 AM - 3:30 PM)
+    if (now >= openTime && now <= closeTime) {
       return {
-        isOpen: false,
-        marketStatus: "AFTER_HOURS",
+        isOpen: true,
+        nextOpen: null,
+        nextClose: closeTime,
+        timezone: exchangeInfo.timezone,
+        marketStatus: "OPEN",
       }
-    } else {
-      return {
-        isOpen: false,
-        marketStatus: "CLOSED",
-      }
+    }
+
+    // After hours (after 3:30 PM)
+    const nextOpen = this.getNextTradingDay(now, exchange)
+    return {
+      isOpen: false,
+      nextOpen,
+      nextClose: null,
+      timezone: exchangeInfo.timezone,
+      marketStatus: "AFTER_HOURS",
     }
   }
 
-  public getTimeUntilOpen(exchange: "NSE" | "BSE" = "NSE"): string {
-    const now = this.getISTTime()
-    const tomorrow = new Date(now)
-    tomorrow.setDate(tomorrow.getDate() + 1)
-    tomorrow.setHours(9, 15, 0, 0)
+  private getNextTradingDay(currentDate: Date, exchange: string): Date {
+    const nextDay = new Date(currentDate)
+    nextDay.setDate(nextDay.getDate() + 1)
 
-    // If it's Friday evening, next open is Monday
-    if (now.getDay() === 5 && now.getHours() >= 15) {
-      tomorrow.setDate(tomorrow.getDate() + 2)
-    }
-    // If it's Saturday, next open is Monday
-    else if (now.getDay() === 6) {
-      tomorrow.setDate(tomorrow.getDate() + 1)
-    }
-    // If it's Sunday, next open is Monday
-    else if (now.getDay() === 0) {
-      tomorrow.setDate(tomorrow.getDate() + 0)
+    // Keep incrementing until we find a trading day
+    while (this.isWeekend(nextDay) || this.isHoliday(nextDay, exchange)) {
+      nextDay.setDate(nextDay.getDate() + 1)
     }
 
-    const diff = tomorrow.getTime() - now.getTime()
+    const exchangeInfo = this.exchangeHours[exchange]
+    return this.parseTime(exchangeInfo.open, nextDay)
+  }
+
+  public getTimeUntilOpen(exchange: string): string {
+    const marketStatus = this.getMarketStatus(exchange)
+    if (!marketStatus.nextOpen) return "Market closed"
+
+    const now = this.getIndianTime()
+    const diff = marketStatus.nextOpen.getTime() - now.getTime()
+
+    if (diff <= 0) return "Market should be open"
+
     const hours = Math.floor(diff / (1000 * 60 * 60))
     const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60))
 
@@ -128,22 +173,19 @@ class MarketHoursService {
     return `${hours}h ${minutes}m`
   }
 
-  public getTimeUntilClose(exchange: "NSE" | "BSE" = "NSE"): string {
-    const now = this.getISTTime()
-    const today = new Date(now)
-    today.setHours(15, 30, 0, 0)
+  public getTimeUntilClose(exchange: string): string {
+    const marketStatus = this.getMarketStatus(exchange)
+    if (!marketStatus.nextClose || !marketStatus.isOpen) return "Market closed"
 
-    const diff = today.getTime() - now.getTime()
-    if (diff <= 0) return "Market Closed"
+    const now = this.getIndianTime()
+    const diff = marketStatus.nextClose.getTime() - now.getTime()
+
+    if (diff <= 0) return "Market closed"
 
     const hours = Math.floor(diff / (1000 * 60 * 60))
     const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60))
 
     return `${hours}h ${minutes}m`
-  }
-
-  public isMarketOpen(exchange: "NSE" | "BSE" = "NSE"): boolean {
-    return this.getMarketStatus(exchange).isOpen
   }
 }
 

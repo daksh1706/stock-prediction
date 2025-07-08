@@ -28,13 +28,22 @@ interface PredictionDashboardProps {
   stockData: any
 }
 
-// Add validation helpers
+// Improved validation helpers
 const validateStockData = (data: any) => {
-  return data && typeof data.currentPrice === "number" && !isNaN(data.currentPrice)
+  return data && typeof data.currentPrice === "number" && !isNaN(data.currentPrice) && data.currentPrice > 0
 }
 
 const validatePrediction = (pred: any) => {
-  return pred && pred.signal && typeof pred.confidence === "number" && !isNaN(pred.confidence)
+  return (
+    pred &&
+    pred.signal &&
+    typeof pred.confidence === "number" &&
+    !isNaN(pred.confidence) &&
+    pred.confidence > 0 &&
+    typeof pred.targetPrice === "number" &&
+    !isNaN(pred.targetPrice) &&
+    pred.targetPrice > 0
+  )
 }
 
 const validateForecastData = (data: any[]) => {
@@ -46,7 +55,7 @@ const validateForecastData = (data: any[]) => {
 }
 
 export default function PredictionDashboard({ selectedStock, prediction, stockData }: PredictionDashboardProps) {
-  // Safe data with validation
+  // Safe data with improved validation
   const safeStockData = validateStockData(stockData) ? stockData : null
   const safePrediction = validatePrediction(prediction) ? prediction : null
   const safeSelectedStock = selectedStock || { symbol: "UNKNOWN", name: "Unknown Stock" }

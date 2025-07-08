@@ -17,14 +17,10 @@ export async function GET(request: NextRequest) {
     // Get market status
     const marketStatus = marketHoursService.getMarketStatus(exchange)
 
-    // Fetch stock data
+    // Fetch stock data (real or simulated)
     const stockData = await stockDataFetcher.fetchStockData(symbol.trim())
 
-    if (!stockData) {
-      throw new Error("Failed to fetch stock data")
-    }
-
-    // Add market status to response
+    // Add market status information
     const response = {
       ...stockData,
       marketStatus: {
@@ -41,10 +37,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error("Error in stock-data API:", error)
     return NextResponse.json(
-      {
-        error: "Failed to fetch stock data",
-        details: error instanceof Error ? error.message : "Unknown error",
-      },
+      { error: "Failed to fetch stock data", details: error instanceof Error ? error.message : "Unknown error" },
       { status: 500 },
     )
   }

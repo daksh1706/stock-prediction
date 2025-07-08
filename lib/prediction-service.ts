@@ -85,6 +85,11 @@ class PredictionService {
   private analyzeStock(stockData: StockData): PredictionResult {
     const { symbol, currentPrice, dayChange, dayChangePercent, volume, high52w, low52w } = stockData
 
+    // Validate input data
+    if (!currentPrice || currentPrice <= 0) {
+      throw new Error("Invalid stock price data")
+    }
+
     // Generate consistent historical data
     const historicalPrices = this.generateHistoricalPrices(currentPrice, symbol)
 
@@ -94,7 +99,8 @@ class PredictionService {
     const sma50 = this.calculateMovingAverage(historicalPrices, 50)
 
     // Price position analysis
-    const pricePosition = (currentPrice - low52w) / (high52w - low52w)
+    const priceRange = high52w - low52w
+    const pricePosition = priceRange > 0 ? (currentPrice - low52w) / priceRange : 0.5
     const volumeScore = volume > 1000000 ? 0.7 : volume > 500000 ? 0.5 : 0.3
 
     // Trend analysis
@@ -159,31 +165,36 @@ class PredictionService {
 
     if (score > 0.3) {
       signal = "BUY"
-      confidence = Math.min(95, 70 + score * 50)
-      targetPrice = currentPrice * (1.05 + score * 0.1)
+      confidence = Math.min(95, Math.max(60, 70 + score * 50))
+      targetPrice = currentPrice * (1.05 + Math.max(0, score * 0.1))
       stopLoss = currentPrice * 0.95
       riskLevel = score > 0.6 ? "LOW" : "MEDIUM"
       reasoning = "Technical indicators suggest bullish momentum with favorable risk-reward ratio"
     } else if (score < -0.3) {
       signal = "SELL"
-      confidence = Math.min(95, 70 + Math.abs(score) * 50)
+      confidence = Math.min(95, Math.max(60, 70 + Math.abs(score) * 50))
       targetPrice = currentPrice * (0.95 + score * 0.1)
       stopLoss = currentPrice * 1.05
       riskLevel = score < -0.6 ? "LOW" : "MEDIUM"
       reasoning = "Technical analysis indicates bearish pressure with downside risk"
     } else {
       signal = "HOLD"
-      confidence = 60 + Math.abs(score) * 20
+      confidence = Math.max(50, 60 + Math.abs(score) * 20)
       targetPrice = currentPrice * (1.02 + score * 0.05)
       stopLoss = currentPrice * 0.98
       riskLevel = "MEDIUM"
       reasoning = "Mixed signals suggest sideways movement - wait for clearer direction"
     }
 
+    // Ensure all values are valid numbers
+    confidence = Math.round(Math.max(50, Math.min(95, confidence)))
+    targetPrice = Math.max(currentPrice * 0.8, targetPrice)
+    stopLoss = signal === "BUY" ? Math.min(currentPrice * 0.98, stopLoss) : Math.max(currentPrice * 1.02, stopLoss)
+
     return {
       symbol,
       signal,
-      confidence: Math.round(confidence),
+      confidence,
       targetPrice: Number.parseFloat(targetPrice.toFixed(2)),
       stopLoss: Number.parseFloat(stopLoss.toFixed(2)),
       timeHorizon: "1-3 months",
